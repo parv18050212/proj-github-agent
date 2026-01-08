@@ -1,6 +1,6 @@
 """
 Leaderboard Router
-Endpoints for project rankings and leaderboard
+Endpoints for project rankings and leaderboard an !!
 """
 from fastapi import APIRouter, HTTPException, Query, status
 from uuid import UUID

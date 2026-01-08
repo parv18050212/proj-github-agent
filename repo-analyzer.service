@@ -1,0 +1,19 @@
+[Unit]
+Description=Repository Analyzer API
+After=network.target
+
+[Service]
+Type=simple
+User=ec2-user
+WorkingDirectory=/home/ec2-user/proj-github-agent
+Environment="PATH=/home/ec2-user/proj-github-agent/venv/bin"
+ExecStart=/home/ec2-user/proj-github-agent/venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port 8000
+Restart=always
+RestartSec=10
+
+# Logging
+StandardOutput=append:/home/ec2-user/proj-github-agent/app.log
+StandardError=append:/home/ec2-user/proj-github-agent/error.log
+
+[Install]
+WantedBy=multi-user.target

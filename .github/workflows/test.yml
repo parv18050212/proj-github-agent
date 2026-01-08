@@ -39,9 +39,9 @@ jobs:
 
       - name: Test imports
         run: |
-          python -c "from backend.routers.frontend_api import router"
-          python -c "from backend.services.frontend_adapter import FrontendAdapter"
-          python -c "from agent import analyze_repo_with_langgraph"
+          python -c "from src.api.backend.routers.frontend_api import router"
+          python -c "from src.api.backend.services.frontend_adapter import FrontendAdapter"
+          python -c "from src.core.agent import analyze_repo_with_langgraph"
 
       - name: Check code quality
         run: |

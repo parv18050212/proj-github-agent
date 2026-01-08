@@ -37,7 +37,7 @@ jobs:
 
       - name: Test import
         run: |
-          python -c "from backend.routers.frontend_api import router; print('Frontend API loaded')"
+          python -c "from src.api.backend.routers.frontend_api import router; print('Frontend API loaded')"
 
   deploy:
     name: Deploy to EC2

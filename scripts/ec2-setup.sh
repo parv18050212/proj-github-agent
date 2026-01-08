@@ -1,75 +1,50 @@
 #!/bin/bash
 
-# EC2 Initial Setup Script
-# Run this once on your EC2 instance to prepare for deployments
+# EC2 Initial Setup Script (No Docker)
+# Run this ONCE on your EC2 instance to prepare for deployments
 
 set -e
 
-echo "🚀 Setting up EC2 instance for Repository Analyzer..."
+echo "=========================================="
+echo "Setting up EC2 for Repository Analyzer"
+echo "=========================================="
 
 # Update system
-echo "📦 Updating system packages..."
+echo "Updating system packages..."
 sudo apt-get update
 sudo apt-get upgrade -y
 
-# Install required packages
-echo "📦 Installing dependencies..."
+# Install Python 3.12 and dependencies
+echo "Installing Python and dependencies..."
 sudo apt-get install -y \
+    python3.12 \
+    python3.12-venv \
+    python3-pip \
     git \
     curl \
-    python3.12 \
-    python3-pip \
-    docker.io \
-    docker-compose \
-    nginx \
-    certbot \
-    python3-certbot-nginx
+    nginx
 
-# Install Docker Compose v2
-echo "🐳 Installing Docker Compose v2..."
-sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-sudo chmod +x /usr/local/bin/docker-compose
-docker-compose --version
-
-# Add ubuntu user to docker group
-echo "👤 Configuring Docker permissions..."
-sudo usermod -aG docker ubuntu
-sudo systemctl enable docker
-sudo systemctl start docker
+# Set Python 3.12 as default (optional)
+sudo update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 1 || true
 
 # Create application directory
-echo "📁 Creating application directory..."
+echo "Creating application directory..."
 sudo mkdir -p /home/ubuntu/repo-analyzer
 sudo chown -R ubuntu:ubuntu /home/ubuntu/repo-analyzer
 
-# Clone repository (you'll need to update this URL)
-echo "📥 Cloning repository..."
-cd /home/ubuntu/repo-analyzer
-read -p "Enter your GitHub repository URL: " REPO_URL
-git clone $REPO_URL .
-
-# Create logs directory
-mkdir -p logs report
-
 # Configure firewall
-echo "🔥 Configuring firewall..."
-sudo ufw allow 22/tcp
-sudo ufw allow 80/tcp
-sudo ufw allow 443/tcp
-sudo ufw allow 8000/tcp
+echo "Configuring firewall..."
+sudo ufw allow 22/tcp    # SSH
+sudo ufw allow 80/tcp    # HTTP (Nginx)
+sudo ufw allow 8000/tcp  # API direct access
 sudo ufw --force enable
 
-# Configure Nginx reverse proxy
-echo "🌐 Configuring Nginx..."
+# Configure Nginx as reverse proxy
+echo "Configuring Nginx..."
 sudo tee /etc/nginx/sites-available/repo-analyzer << 'EOF'
 server {
     listen 80;
     server_name _;
-
-    # Security headers
-    add_header X-Content-Type-Options nosniff;
-    add_header X-Frame-Options DENY;
-    add_header X-XSS-Protection "1; mode=block";
 
     location / {
         proxy_pass http://localhost:8000;
@@ -78,7 +53,7 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
         
-        # Timeouts
+        # Timeouts for long-running analysis
         proxy_connect_timeout 60s;
         proxy_send_timeout 300s;
         proxy_read_timeout 300s;
@@ -97,32 +72,23 @@ sudo nginx -t
 sudo systemctl restart nginx
 sudo systemctl enable nginx
 
-# Setup SSL (optional - run after DNS is configured)
 echo ""
-echo "📋 Setup SSL certificate (run after DNS is configured):"
-echo "sudo certbot --nginx -d api.yourdomain.com"
+echo "=========================================="
+echo "EC2 Setup Complete!"
+echo "=========================================="
 echo ""
-
-# Display EC2 instance info
+echo "Your EC2 Public IP: $(curl -s http://169.254.169.254/latest/meta-data/public-ipv4 2>/dev/null || echo 'N/A')"
 echo ""
-echo "✅ EC2 setup complete!"
+echo "GitHub Secrets needed:"
 echo ""
-echo "📝 Next steps:"
-echo "1. Configure GitHub Secrets in your repository settings:"
+echo "   EC2_SSH_KEY     = (paste your .pem file content)"
+echo "   EC2_HOST        = YOUR_EC2_PUBLIC_IP"
+echo "   EC2_USER        = ubuntu"
+echo "   SUPABASE_URL    = your_supabase_url"
+echo "   SUPABASE_KEY    = your_supabase_key"
+echo "   GEMINI_API_KEY  = your_gemini_key"
+echo "   GITHUB_API_KEY  = your_github_token"
+echo "   CORS_ORIGINS    = http://localhost:3000"
 echo ""
-echo "   AWS_ACCESS_KEY_ID=<your-aws-key>"
-echo "   AWS_SECRET_ACCESS_KEY=<your-aws-secret>"
-echo "   AWS_REGION=<your-region>"
-echo "   EC2_SSH_KEY=<your-private-key-content>"
-echo "   EC2_HOST=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)"
-echo "   EC2_USER=ubuntu"
-echo "   SUPABASE_URL=<your-supabase-url>"
-echo "   SUPABASE_KEY=<your-supabase-key>"
-echo "   OPENAI_API_KEY=<your-openai-key>"
-echo "   CORS_ORIGINS=<your-frontend-urls>"
+echo "Then push to GitHub main branch to deploy!"
 echo ""
-echo "2. Log out and log back in for Docker group changes to take effect"
-echo "3. Push code to GitHub main branch to trigger deployment"
-echo ""
-echo "🌐 Your EC2 Public IP: $(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)"
-echo "📡 API will be available at: http://$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)"

@@ -23,7 +23,6 @@ matplotlib
 radon          
 chardet
 requests
-google.genai
 supabase
 postgrest
 pytest

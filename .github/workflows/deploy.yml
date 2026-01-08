@@ -107,10 +107,16 @@ jobs:
           SUPABASE_URL=${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY=${{ secrets.SUPABASE_KEY }}
           GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
+          GITHUB_API_KEY=${{ secrets.GITHUB_API_KEY }}
           CORS_ORIGINS=${{ secrets.CORS_ORIGINS }}
+          APP_ENV=production
           ENVIRONMENT=production
           LOG_LEVEL=info
           WORKERS=4
+          EMBEDDING_PROVIDER=sentence-transformers
+          EMBEDDING_MODEL=all-MiniLM-L6-v2
+          DISABLE_EXTERNAL_LLM=false
+          HTTP_TIMEOUT=30
           EOF
             
             echo "🐳 Rebuilding containers..."

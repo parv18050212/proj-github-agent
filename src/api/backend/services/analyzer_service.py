@@ -11,11 +11,11 @@ from pathlib import Path
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from agent import build_pipeline
-from backend.utils.progress_tracker import ProgressTracker
-from backend.services.data_mapper import DataMapper
-from backend.crud import ProjectCRUD
-from utils.git_utils import cleanup_repo
+from src.core.agent import build_pipeline
+from src.api.backend.utils.progress_tracker import ProgressTracker
+from src.api.backend.services.data_mapper import DataMapper
+from src.api.backend.crud import ProjectCRUD
+from src.utils.git_utils import cleanup_repo
 
 
 class AnalyzerService:

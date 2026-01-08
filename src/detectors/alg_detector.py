@@ -1,6 +1,6 @@
 from typing import List, Dict, Any, Tuple
-from utils.winnowing import jaccard_fingerprint
-from utils.ast_utils import ast_similarity
+from src.utils.winnowing import jaccard_fingerprint
+from src.utils.ast_utils import ast_similarity
 
 def algorithmic_similarity(file_a: Dict[str, Any], file_b: Dict[str, Any]) -> Dict:
     """

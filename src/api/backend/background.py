@@ -4,7 +4,7 @@ Handles async analysis jobs
 """
 import traceback
 from uuid import UUID
-from backend.services.analyzer_service import AnalyzerService
+from src.api.backend.services.analyzer_service import AnalyzerService
 
 
 def run_analysis_job(project_id: str, job_id: str, repo_url: str, team_name: str = None):

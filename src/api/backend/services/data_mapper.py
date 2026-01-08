@@ -5,7 +5,7 @@ Maps agent.py output to Supabase database format
 from typing import Dict, Any, List
 from uuid import UUID
 from datetime import datetime
-from backend.crud import ProjectCRUD, TechStackCRUD, IssueCRUD, TeamMemberCRUD
+from src.api.backend.crud import ProjectCRUD, TechStackCRUD, IssueCRUD, TeamMemberCRUD
 
 
 class DataMapper:

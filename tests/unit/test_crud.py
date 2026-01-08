@@ -4,7 +4,7 @@ Unit Tests for CRUD Operations
 import pytest
 from uuid import UUID, uuid4
 from datetime import datetime
-from backend.crud import (
+from src.api.backend.crud import (
     ProjectCRUD, AnalysisJobCRUD, TechStackCRUD, 
     IssueCRUD, TeamMemberCRUD
 )

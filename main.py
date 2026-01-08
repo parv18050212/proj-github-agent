@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Import routers
-from backend.routers import analysis, projects, leaderboard, frontend_api
+from src.api.backend.routers import analysis, projects, leaderboard, frontend_api
 
 # Create FastAPI app
 app = FastAPI(

@@ -6,8 +6,8 @@ from fastapi import APIRouter, HTTPException, Query
 from typing import Optional
 from uuid import UUID
 
-from backend.crud import ProjectCRUD, TechStackCRUD, IssueCRUD, TeamMemberCRUD
-from backend.services.frontend_adapter import FrontendAdapter
+from src.api.backend.crud import ProjectCRUD, TechStackCRUD, IssueCRUD, TeamMemberCRUD
+from src.api.backend.services.frontend_adapter import FrontendAdapter
 
 router = APIRouter(prefix="/api", tags=["frontend"])
 

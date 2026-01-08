@@ -4,7 +4,7 @@ Maps the 10-stage pipeline to progress percentages
 """
 from typing import Optional
 from uuid import UUID
-from backend.crud import AnalysisJobCRUD
+from src.api.backend.crud import AnalysisJobCRUD
 
 
 class ProgressTracker:

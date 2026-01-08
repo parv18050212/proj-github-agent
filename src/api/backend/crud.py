@@ -4,7 +4,7 @@ CRUD Operations for Supabase Database
 from typing import List, Optional, Dict, Any
 from uuid import UUID, uuid4
 from datetime import datetime
-from backend.database import get_supabase_client
+from src.api.backend.database import get_supabase_client
 from postgrest.exceptions import APIError
 
 

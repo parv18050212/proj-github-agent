@@ -1,5 +1,5 @@
 import os
-from utils.file_utils import read_file
+from src.utils.file_utils import read_file
 
 def generate_repo_summary(repo_path: str, max_chars: int = 40000) -> str:
     """

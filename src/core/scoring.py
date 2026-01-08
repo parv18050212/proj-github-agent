@@ -1,4 +1,4 @@
-from config import CONF
+from src.core.config import CONF
 from typing import Dict, Any
 
 def aggregate_scores(seg_alg: float, seg_llm: float, seg_cross: float, seg_commit: float) -> float:

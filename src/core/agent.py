@@ -14,21 +14,21 @@ load_dotenv()
 INPUT_FILE = "D://HackEval Final//proj-github//team details .xlsx" 
 
 # --- Import Core Utils ---
-from orchestrator.langgraph_adapter import SimpleLangGraph
-from utils.git_utils import clone_repo, cleanup_repo, list_files
-from utils.file_utils import read_file, generate_tree_structure
+from src.orchestrator.langgraph_adapter import SimpleLangGraph
+from src.utils.git_utils import clone_repo, cleanup_repo, list_files
+from src.utils.file_utils import read_file, generate_tree_structure
 
 # --- Import Detectors ---
-from detectors.commit_forensics import analyze_commits
-from detectors.llm_detector import llm_origin_ensemble
-from detectors.quality_metrics import analyze_quality
-from detectors.alg_detector import algorithmic_similarity 
-from detectors.security_scan import scan_for_secrets
-from detectors.stack_detector import detect_tech_stack
-from detectors.product_evaluator import evaluate_product_logic
-from detectors.maturity_scanner import scan_project_maturity
-from detectors.structure_analyzer import analyze_structure
-from utils.visualizer import generate_dashboard
+from src.detectors.commit_forensics import analyze_commits
+from src.detectors.llm_detector import llm_origin_ensemble
+from src.detectors.quality_metrics import analyze_quality
+from src.detectors.alg_detector import algorithmic_similarity 
+from src.detectors.security_scan import scan_for_secrets
+from src.detectors.stack_detector import detect_tech_stack
+from src.detectors.product_evaluator import evaluate_product_logic
+from src.detectors.maturity_scanner import scan_project_maturity
+from src.detectors.structure_analyzer import analyze_structure
+from src.utils.visualizer import generate_dashboard
 
 # ==========================================
 # 1. Pipeline Nodes

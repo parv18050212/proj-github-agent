@@ -6,7 +6,7 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, status
 from uuid import UUID
 from typing import Dict, Any
 
-from backend.schemas import (
+from src.api.backend.schemas import (
     AnalyzeRepoRequest,
     AnalyzeRepoResponse,
     AnalysisStatusResponse,
@@ -17,8 +17,8 @@ from backend.schemas import (
     TeamMemberItem,
     ErrorResponse
 )
-from backend.crud import ProjectCRUD, AnalysisJobCRUD, TechStackCRUD, IssueCRUD, TeamMemberCRUD
-from backend.background import run_analysis_job
+from src.api.backend.crud import ProjectCRUD, AnalysisJobCRUD, TechStackCRUD, IssueCRUD, TeamMemberCRUD
+from src.api.backend.background import run_analysis_job
 
 router = APIRouter(prefix="/api", tags=["Analysis"])
 

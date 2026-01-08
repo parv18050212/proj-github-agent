@@ -1,9 +1,9 @@
 # src/preprocess.py
-from utils.file_utils import read_file, detect_language
-from utils.winnowing import tokens_from_code, winnow_hashes
-from utils.ast_utils import canonical_ast_node_types
+from src.utils.file_utils import read_file, detect_language
+from src.utils.winnowing import tokens_from_code, winnow_hashes
+from src.utils.ast_utils import canonical_ast_node_types
 from typing import Dict, Any
-from faiss_index import compute_embeddings
+from src.core.faiss_index import compute_embeddings
 import numpy as np
 
 def preprocess_file(path: str, k: int = 5, w: int = 4) -> Dict[str, Any]:

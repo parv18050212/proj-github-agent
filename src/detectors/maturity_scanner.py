@@ -1,6 +1,6 @@
 import os
 from typing import Dict, Any
-from utils.file_utils import read_file
+from src.utils.file_utils import read_file
 
 # Patterns that indicate testing infrastructure
 TEST_PATTERNS = [

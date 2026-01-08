@@ -2,7 +2,7 @@ import os
 import json
 import google.generativeai as genai
 from google.generativeai import types
-from utils.repo_summary import generate_repo_summary
+from src.utils.repo_summary import generate_repo_summary
 
 def evaluate_product_logic(repo_path: str, api_key: str = None) -> dict:
     # 1. Validation

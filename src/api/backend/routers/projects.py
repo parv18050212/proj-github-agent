@@ -7,7 +7,7 @@ from uuid import UUID
 from typing import Optional
 import math
 
-from backend.schemas import (
+from src.api.backend.schemas import (
     ProjectListResponse,
     ProjectListItem,
     AnalysisResultResponse,
@@ -17,7 +17,7 @@ from backend.schemas import (
     TeamMemberItem,
     ErrorResponse
 )
-from backend.crud import ProjectCRUD, TechStackCRUD, IssueCRUD, TeamMemberCRUD
+from src.api.backend.crud import ProjectCRUD, TechStackCRUD, IssueCRUD, TeamMemberCRUD
 
 router = APIRouter(prefix="/api", tags=["Projects"])
 

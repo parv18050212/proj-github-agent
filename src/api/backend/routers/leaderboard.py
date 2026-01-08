@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 from uuid import UUID
 import math
 
-from backend.schemas import (
+from src.api.backend.schemas import (
     LeaderboardResponse,
     LeaderboardItem,
     BatchUploadRequest,
@@ -14,9 +14,9 @@ from backend.schemas import (
     AnalyzeRepoResponse,
     ErrorResponse
 )
-from backend.crud import ProjectCRUD, AnalysisJobCRUD
+from src.api.backend.crud import ProjectCRUD, AnalysisJobCRUD
 from fastapi import BackgroundTasks
-from backend.background import run_analysis_job
+from src.api.backend.background import run_analysis_job
 
 router = APIRouter(prefix="/api", tags=["Leaderboard"])
 

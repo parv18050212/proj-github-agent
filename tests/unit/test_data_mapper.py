@@ -4,7 +4,7 @@ Unit Tests for Data Mapper Service
 import pytest
 from uuid import uuid4
 from unittest.mock import MagicMock
-from backend.services.data_mapper import DataMapper
+from src.api.backend.services.data_mapper import DataMapper
 
 
 class TestDataMapper:

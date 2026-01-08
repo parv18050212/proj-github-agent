@@ -3,7 +3,7 @@ Unit Tests for Request/Response Schemas
 """
 import pytest
 from pydantic import ValidationError
-from backend.schemas import (
+from src.api.backend.schemas import (
     AnalyzeRepoRequest, BatchUploadRequest, ProjectFilterParams,
     LeaderboardParams, ScoreBreakdown, AnalysisResultResponse
 )

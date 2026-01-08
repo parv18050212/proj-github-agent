@@ -2,12 +2,15 @@
 Frontend-compatible API endpoints
 Matches the expected frontend specification
 """
-from fastapi import APIRouter, HTTPException, Query
-from typing import Optional
+from fastapi import APIRouter, HTTPException, Query, BackgroundTasks, UploadFile, File, Form
+from typing import Optional, List
 from uuid import UUID
+import csv
+import io
 
-from src.api.backend.crud import ProjectCRUD, TechStackCRUD, IssueCRUD, TeamMemberCRUD
+from src.api.backend.crud import ProjectCRUD, TechStackCRUD, IssueCRUD, TeamMemberCRUD, AnalysisJobCRUD
 from src.api.backend.services.frontend_adapter import FrontendAdapter
+from src.api.backend.background import run_analysis_job
 
 router = APIRouter(prefix="/api", tags=["frontend"])
 
@@ -26,9 +29,12 @@ async def get_project_detail(project_id: str):
         issues = IssueCRUD.get_issues(project_id)
         team_members = TeamMemberCRUD.get_team_members(project_id)
         
+        # Get report_json if available
+        report_json = project.get("report_json")
+        
         # Transform to frontend format
         result = FrontendAdapter.transform_project_response(
-            project, tech_stack, issues, team_members
+            project, tech_stack, issues, team_members, report_json
         )
         
         return result
@@ -77,7 +83,11 @@ async def list_projects(
                 if tech not in tech_names:
                     continue
             
-            item = FrontendAdapter.transform_project_list_item(project, tech_stack)
+            # Count security issues
+            issues = IssueCRUD.get_issues(project["id"])
+            security_count = len([i for i in issues if i.get("type") == "security"])
+            
+            item = FrontendAdapter.transform_project_list_item(project, tech_stack, security_count)
             results.append(item)
         
         return results
@@ -120,8 +130,7 @@ async def get_leaderboard(
                 if tech not in tech_names:
                     continue
             
-            item = FrontendAdapter.transform_leaderboard_item(project)
-            item["techStack"] = [t.get("technology") for t in tech_stack][:5]
+            item = FrontendAdapter.transform_leaderboard_item(project, tech_stack)
             results.append(item)
         
         return results
@@ -190,15 +199,9 @@ async def get_dashboard_stats():
         return {
             "totalProjects": len(projects),
             "completedProjects": len(completed),
-            "inProgressProjects": len(in_progress),
-            "averageScore": avg_score,
-            "totalTechnologies": len(all_tech),
-            "totalSecurityIssues": total_issues,
-            "projectsByStatus": {
-                "completed": len(completed),
-                "processing": len(in_progress),
-                "failed": len([p for p in projects if p.get("status") == "failed"])
-            }
+            "pendingProjects": len(in_progress),  # Changed from inProgressProjects
+            "averageScore": avg_score,  # Changed from avgScore
+            "totalSecurityIssues": total_issues
         }
         
     except Exception as e:
@@ -235,12 +238,12 @@ async def delete_project(project_id: str):
     """Delete a project and all related data"""
     try:
         # Delete related data first
-        TechStackCRUD.delete_by_project(supabase, project_id)
-        IssueCRUD.delete_by_project(supabase, project_id)
-        TeamMemberCRUD.delete_by_project(supabase, project_id)
+        TechStackCRUD.delete_by_project(project_id)
+        IssueCRUD.delete_by_project(project_id)
+        TeamMemberCRUD.delete_by_project(project_id)
         
         # Delete project
-        success = ProjectCRUD.delete_project(supabase, project_id)
+        success = ProjectCRUD.delete_project(project_id)
         if not success:
             raise HTTPException(status_code=404, detail="Project not found")
         
@@ -248,5 +251,127 @@ async def delete_project(project_id: str):
         
     except HTTPException:
         raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/batch-upload")
+async def batch_upload(
+    file: UploadFile = File(...),
+    background_tasks: BackgroundTasks = None
+):
+    """
+    Batch upload projects from CSV file
+    Expected CSV columns: teamName, repoUrl, description (optional)
+    """
+    try:
+        # Validate file type
+        if not file.filename.endswith('.csv'):
+            raise HTTPException(status_code=400, detail="File must be a CSV")
+        
+        # Read CSV content
+        content = await file.read()
+        csv_text = content.decode('utf-8')
+        csv_reader = csv.DictReader(io.StringIO(csv_text))
+        
+        # Validate headers
+        required_headers = {'teamName', 'repoUrl'}
+        headers = set(csv_reader.fieldnames or [])
+        
+        if not required_headers.issubset(headers):
+            missing = required_headers - headers
+            raise HTTPException(
+                status_code=400, 
+                detail=f"CSV missing required columns: {', '.join(missing)}"
+            )
+        
+        # Process each row
+        queued_jobs = []
+        failed_rows = []
+        
+        for row_num, row in enumerate(csv_reader, start=2):  # Start at 2 (header is row 1)
+            team_name = row.get('teamName', '').strip()
+            repo_url = row.get('repoUrl', '').strip()
+            
+            if not team_name or not repo_url:
+                failed_rows.append({
+                    "row": row_num,
+                    "error": "Missing teamName or repoUrl"
+                })
+                continue
+            
+            # Validate GitHub URL
+            if 'github.com' not in repo_url.lower():
+                failed_rows.append({
+                    "row": row_num,
+                    "error": "Invalid GitHub URL"
+                })
+                continue
+            
+            try:
+                # Check if already exists
+                existing = ProjectCRUD.get_project_by_url(repo_url)
+                if existing and existing.get("status") in ["analyzing", "completed"]:
+                    failed_rows.append({
+                        "row": row_num,
+                        "teamName": team_name,
+                        "repoUrl": repo_url,
+                        "error": f"Already {existing.get('status')}"
+                    })
+                    continue
+                
+                # Create project
+                if existing:
+                    project_id = UUID(existing["id"])
+                else:
+                    project = ProjectCRUD.create_project(
+                        repo_url=repo_url,
+                        team_name=team_name
+                    )
+                    project_id = UUID(project["id"])
+                
+                # Create job
+                job = AnalysisJobCRUD.create_job(project_id)
+                job_id = UUID(job["id"])
+                
+                # Queue analysis
+                if background_tasks:
+                    background_tasks.add_task(
+                        run_analysis_job,
+                        project_id=str(project_id),
+                        job_id=str(job_id),
+                        repo_url=repo_url,
+                        team_name=team_name
+                    )
+                
+                queued_jobs.append({
+                    "row": row_num,
+                    "teamName": team_name,
+                    "repoUrl": repo_url,
+                    "jobId": str(job_id),
+                    "projectId": str(project_id)
+                })
+                
+            except Exception as e:
+                failed_rows.append({
+                    "row": row_num,
+                    "teamName": team_name,
+                    "repoUrl": repo_url,
+                    "error": str(e)
+                })
+        
+        return {
+            "success": len(queued_jobs),
+            "failed": len(failed_rows),
+            "total": len(queued_jobs) + len(failed_rows),
+            "queued": queued_jobs,
+            "errors": failed_rows,
+            "message": f"Successfully queued {len(queued_jobs)} projects, {len(failed_rows)} failed"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

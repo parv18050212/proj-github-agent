@@ -29,7 +29,7 @@ Frontend (React/Next.js/Vue)
     ↓
 API Client (axios/fetch)
     ↓
-FastAPI Backend (http://your-ec2-ip:8000)
+FastAPI Backend (http://34.200.19.255:8000)
     ↓
 Supabase PostgreSQL Database
 ```

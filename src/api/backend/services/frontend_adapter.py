@@ -5,10 +5,55 @@ Transforms backend data to match frontend expectations
 from typing import Dict, Any, List
 from uuid import UUID
 from datetime import datetime
+from collections import defaultdict
 
 
 class FrontendAdapter:
     """Adapts backend responses to frontend format"""
+    
+    @staticmethod
+    def _extract_scores(project_data: Dict[str, Any], report_json: Dict[str, Any] = None) -> Dict[str, float]:
+        """Extract and normalize scores from project data"""
+        scores = {
+            "totalScore": project_data.get("total_score", 0),
+            "qualityScore": project_data.get("quality_score", 0),
+            "securityScore": project_data.get("security_score", 0),
+            "originalityScore": project_data.get("originality_score", 0) or project_data.get("llm_score", 0),
+            "architectureScore": project_data.get("engineering_score", 0) or project_data.get("architecture_score", 0),
+            "documentationScore": project_data.get("documentation_score", 0)
+        }
+        
+        # Try to extract from report if not in project_data
+        if report_json and "scores" in report_json:
+            report_scores = report_json["scores"]
+            for key in scores:
+                snake_key = key[0].lower() + ''.join(['_' + c.lower() if c.isupper() else c for c in key[1:]])
+                if scores[key] == 0 and snake_key in report_scores:
+                    scores[key] = report_scores[snake_key]
+        
+        return scores
+    
+    @staticmethod
+    def _extract_commit_patterns(report_json: Dict[str, Any] = None) -> List[Dict[str, Any]]:
+        """Extract commit patterns from forensics data"""
+        patterns = []
+        if not report_json or "forensics" not in report_json:
+            return patterns
+        
+        forensics = report_json.get("forensics", {})
+        
+        # Try to build timeline from daily/weekly activity
+        if "daily_activity" in forensics:
+            daily = forensics["daily_activity"]
+            for date, commits_count in daily.items():
+                patterns.append({
+                    "date": date,
+                    "commits": commits_count if isinstance(commits_count, int) else sum(commits_count.values()),
+                    "additions": 0,  # Not tracked in current forensics
+                    "deletions": 0
+                })
+        
+        return sorted(patterns, key=lambda x: x["date"])
     
     @staticmethod
     def transform_project_response(project_data: Dict[str, Any], 
@@ -18,6 +63,9 @@ class FrontendAdapter:
                                    report_json: Dict[str, Any] = None) -> Dict[str, Any]:
         """Transform to frontend ProjectEvaluation format"""
         
+        # Extract scores (flat structure, not nested)
+        scores = FrontendAdapter._extract_scores(project_data, report_json)
+        
         # Extract languages from report or tech stack
         languages = []
         if report_json and "languages" in report_json:
@@ -25,101 +73,187 @@ class FrontendAdapter:
             for lang, pct in lang_data.items():
                 languages.append({"name": lang, "percentage": pct})
         
-        # Extract tech stack names
+        # Extract tech stack names (as strings, not objects)
         tech_names = [t.get("technology") for t in tech_stack if t.get("technology")]
         
         # Extract frameworks
         frameworks = [t.get("technology") for t in tech_stack 
-                     if t.get("category") == "framework"]
+                     if t.get("category") in ["framework", "library"]]
         
-        # Transform contributors
+        # Architecture pattern detection
+        architecture = "Monolithic"
+        if report_json and "structure" in report_json:
+            struct = report_json["structure"]
+            if "microservice" in str(struct).lower():
+                architecture = "Microservices"
+            elif any(word in str(struct).lower() for word in ["api", "client", "server"]):
+                architecture = "Client-Server"
+        
+        # Transform contributors with enhanced data
         contributors = []
-        for member in team_members:
-            contributors.append({
-                "name": member.get("name"),
-                "commits": member.get("commits", 0),
-                "additions": 0,  # Not tracked yet
-                "deletions": 0,  # Not tracked yet
-                "percentage": member.get("contribution_pct", 0)
-            })
+        if report_json and "forensics" in report_json:
+            forensics = report_json["forensics"]
+            author_stats = forensics.get("author_stats", {})
+            
+            for name, stats in author_stats.items():
+                commits = stats.get("commits", 0)
+                lines_changed = stats.get("lines_changed", 0)
+                
+                # Calculate percentage
+                total_commits = forensics.get("total_commits", 1)
+                percentage = round((commits / total_commits) * 100, 1) if total_commits > 0 else 0
+                
+                contributors.append({
+                    "name": name,
+                    "commits": commits,
+                    "additions": lines_changed // 2,  # Estimate (actual split not tracked)
+                    "deletions": lines_changed // 2,
+                    "percentage": percentage
+                })
+        else:
+            # Fallback to team_members table
+            for member in team_members:
+                contributors.append({
+                    "name": member.get("name"),
+                    "commits": member.get("commits", 0),
+                    "additions": 0,
+                    "deletions": 0,
+                    "percentage": member.get("contribution_pct", 0)
+                })
         
-        # Transform security issues
+        # Sort by commits descending
+        contributors = sorted(contributors, key=lambda x: x["commits"], reverse=True)
+        
+        # Commit patterns timeline
+        commit_patterns = FrontendAdapter._extract_commit_patterns(report_json)
+        
+        # Analyze for burst commits and last-minute activity
+        burst_warning = False
+        last_minute_commits = 0
+        
+        if commit_patterns:
+            # Check for burst (>50% commits in last 20% of timeline)
+            total_commits_in_patterns = sum(p["commits"] for p in commit_patterns)
+            if len(commit_patterns) > 5:
+                last_20_percent = int(len(commit_patterns) * 0.2)
+                last_period_commits = sum(p["commits"] for p in commit_patterns[-last_20_percent:])
+                if last_period_commits > (total_commits_in_patterns * 0.5):
+                    burst_warning = True
+                    last_minute_commits = last_period_commits
+        
+        # Transform security issues with enhanced details
         security_issues = []
         secrets_count = 0
+        
         for issue in issues:
             if issue.get("type") == "security":
-                secrets_count += 1
+                issue_type = issue.get("description", "")
+                if "secret" in issue_type.lower() or "password" in issue_type.lower() or "key" in issue_type.lower():
+                    secrets_count += 1
+                    issue_label = "Hardcoded Secret"
+                elif "injection" in issue_type.lower():
+                    issue_label = "Injection Vulnerability"
+                elif "xss" in issue_type.lower():
+                    issue_label = "XSS Vulnerability"
+                else:
+                    issue_label = "Security Issue"
+                
                 security_issues.append({
-                    "type": "Hardcoded Secret" if "secret" in issue.get("description", "").lower() else "Security Issue",
+                    "type": issue_label,
                     "severity": issue.get("severity", "medium"),
                     "file": issue.get("file_path", "Unknown"),
-                    "line": None,
+                    "line": issue.get("line_number"),  # May be None
                     "description": issue.get("description", "")
                 })
         
-        # Calculate AI percentage
+        # Calculate AI percentage and extract analysis
         ai_percentage = 0.0
-        if report_json and "files" in report_json:
-            files = report_json.get("files", [])
-            if files:
-                total_ai = sum(f.get("ai_pct", 0) for f in files)
-                ai_percentage = round(total_ai / len(files), 2)
-        
-        # Extract verdict details
         ai_verdict = None
         strengths = []
         improvements = []
         
-        if report_json and "judge" in report_json:
-            judge = report_json.get("judge", {})
-            ai_verdict = f"{judge.get('positive_feedback', '')}\\n\\n{judge.get('constructive_feedback', '')}"
+        if report_json:
+            # AI percentage from LLM detector
+            if "llm_detection" in report_json:
+                llm_data = report_json["llm_detection"]
+                ai_percentage = llm_data.get("overall_percentage", 0.0)
+            elif "files" in report_json:
+                files = report_json.get("files", [])
+                if files:
+                    total_ai = sum(f.get("ai_pct", 0) for f in files)
+                    ai_percentage = round(total_ai / len(files), 2)
             
-            # Parse strengths and improvements
-            pos_feedback = judge.get("positive_feedback", "")
-            if pos_feedback:
-                strengths = [s.strip() for s in pos_feedback.split(".") if s.strip()]
-            
-            const_feedback = judge.get("constructive_feedback", "")
-            if const_feedback:
-                improvements = [s.strip() for s in const_feedback.split(".") if s.strip()]
+            # AI verdict from judge/evaluator
+            if "judge" in report_json:
+                judge = report_json.get("judge", {})
+                positive = judge.get("positive_feedback", "")
+                constructive = judge.get("constructive_feedback", "")
+                
+                if positive or constructive:
+                    ai_verdict = f"{positive}\n\n{constructive}".strip()
+                
+                # Parse strengths (from positive feedback)
+                if positive:
+                    strengths = [s.strip() for s in positive.split(".") if s.strip() and len(s.strip()) > 10]
+                    strengths = strengths[:5]  # Top 5
+                
+                # Parse improvements (from constructive feedback)
+                if constructive:
+                    improvements = [s.strip() for s in constructive.split(".") if s.strip() and len(s.strip()) > 10]
+                    improvements = improvements[:5]  # Top 5
         
-        # Calculate total files and LOC
+        # Calculate project stats
         total_files = 0
         total_loc = 0
-        if report_json:
-            files = report_json.get("files", [])
-            total_files = len(files)
-            # Estimate LOC (not directly tracked)
-            total_loc = total_files * 100  # Rough estimate
+        test_coverage = 0
         
+        if report_json:
+            if "files" in report_json:
+                files = report_json.get("files", [])
+                total_files = len(files)
+                # Estimate LOC from file count (rough estimate)
+                total_loc = total_files * 100
+            
+            if "structure" in report_json:
+                structure = report_json["structure"]
+                # Look for test coverage data
+                if "test_coverage" in structure:
+                    test_coverage = structure["test_coverage"]
+                elif "tests" in structure:
+                    # Estimate from test count
+                    test_count = structure.get("tests", 0)
+                    if total_files > 0:
+                        test_coverage = min(100, (test_count / total_files) * 100)
+        
+        # Return flat structure matching frontend expectations
         return {
             # Identity
-            "id": project_data.get("id"),
+            "id": str(project_data.get("id")),
             "teamName": project_data.get("team_name"),
             "repoUrl": project_data.get("repo_url"),
             "submittedAt": project_data.get("created_at"),
             "status": project_data.get("status", "completed"),
             
-            # Tech Stack
+            # Tech Stack (strings, not objects)
             "techStack": tech_names,
             "languages": languages,
-            "architecturePattern": report_json.get("architecture", "Monolithic") if report_json else "Monolithic",
+            "architecturePattern": architecture,
             "frameworks": frameworks,
             
-            # Scores
-            "totalScore": project_data.get("total_score", 0),
-            "qualityScore": project_data.get("quality_score", 0),
-            "securityScore": project_data.get("security_score", 0),
-            "originalityScore": project_data.get("originality_score", 0),
-            "architectureScore": project_data.get("engineering_score", 0),
-            "documentationScore": project_data.get("documentation_score", 0),
+            # Scores (FLAT - not nested under 'latestScore')
+            "totalScore": scores["totalScore"],
+            "qualityScore": scores["qualityScore"],
+            "securityScore": scores["securityScore"],
+            "originalityScore": scores["originalityScore"],
+            "architectureScore": scores["architectureScore"],
+            "documentationScore": scores["documentationScore"],
             
             # Commit Forensics
             "totalCommits": project_data.get("total_commits", 0),
             "contributors": contributors,
-            "commitPatterns": [],  # Would need git log analysis
-            "burstCommitWarning": False,  # Would need commit timing analysis
-            "lastMinuteCommits": 0,  # Would need deadline tracking
+            "commitPatterns": commit_patterns,
+            "burstCommitWarning": burst_warning,
+            "lastMinuteCommits": last_minute_commits,
             
             # Security
             "securityIssues": security_issues,
@@ -128,45 +262,60 @@ class FrontendAdapter:
             # AI Analysis
             "aiGeneratedPercentage": ai_percentage,
             "aiVerdict": ai_verdict,
-            "strengths": strengths[:5] if strengths else [],
-            "improvements": improvements[:5] if improvements else [],
+            "strengths": strengths,
+            "improvements": improvements,
             
             # Project Stats
             "totalFiles": total_files,
             "totalLinesOfCode": total_loc,
-            "testCoverage": 0  # Not tracked yet
+            "testCoverage": test_coverage
         }
     
     @staticmethod
-    def transform_project_list_item(project: Dict[str, Any], tech_stack: List[Dict] = None) -> Dict[str, Any]:
-        """Transform for project list/dashboard"""
+    def transform_project_list_item(project: Dict[str, Any], tech_stack: List[Dict] = None, issues_count: int = 0) -> Dict[str, Any]:
+        """Transform for project list/dashboard - with all 6 scores"""
         tech_names = []
         if tech_stack:
-            tech_names = [t.get("technology") for t in tech_stack if t.get("technology")]
+            tech_names = [t.get("technology") for t in tech_stack if t.get("technology")][:5]  # Top 5
+        
+        # Extract scores
+        scores = FrontendAdapter._extract_scores(project)
         
         return {
-            "id": project.get("id"),
+            "id": str(project.get("id")),
             "teamName": project.get("team_name"),
             "repoUrl": project.get("repo_url"),
             "status": project.get("status"),
-            "totalScore": project.get("total_score", 0),
-            "techStack": tech_names[:5],  # Top 5
-            "securityIssues": 0,  # Would need to query issues table
+            "totalScore": scores["totalScore"],
+            "qualityScore": scores["qualityScore"],
+            "securityScore": scores["securityScore"],
+            "originalityScore": scores["originalityScore"],
+            "architectureScore": scores["architectureScore"],
+            "documentationScore": scores["documentationScore"],
+            "techStack": tech_names,
+            "securityIssues": issues_count,
             "submittedAt": project.get("created_at")
         }
     
     @staticmethod
-    def transform_leaderboard_item(project: Dict[str, Any]) -> Dict[str, Any]:
-        """Transform for leaderboard"""
+    def transform_leaderboard_item(project: Dict[str, Any], tech_stack: List[Dict] = None) -> Dict[str, Any]:
+        """Transform for leaderboard with all scores"""
+        tech_names = []
+        if tech_stack:
+            tech_names = [t.get("technology") for t in tech_stack if t.get("technology")][:5]
+        
+        # Extract scores
+        scores = FrontendAdapter._extract_scores(project)
+        
         return {
-            "id": project.get("id"),
+            "id": str(project.get("id")),
             "teamName": project.get("team_name"),
             "repoUrl": project.get("repo_url"),
-            "techStack": [],  # Would need to join tech_stack table
-            "totalScore": project.get("total_score", 0),
-            "qualityScore": project.get("quality_score", 0),
-            "securityScore": project.get("security_score", 0),
-            "originalityScore": project.get("originality_score", 0),
-            "architectureScore": project.get("engineering_score", 0),
-            "documentationScore": project.get("documentation_score", 0)
+            "techStack": tech_names,
+            "totalScore": scores["totalScore"],
+            "qualityScore": scores["qualityScore"],
+            "securityScore": scores["securityScore"],
+            "originalityScore": scores["originalityScore"],
+            "architectureScore": scores["architectureScore"],
+            "documentationScore": scores["documentationScore"]
         }

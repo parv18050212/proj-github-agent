@@ -101,6 +101,24 @@ class CommitPattern(BaseModel):
     deletions: int = 0
 
 
+class SecurityIssue(BaseModel):
+    """Security issue with enhanced details"""
+    type: str
+    severity: str
+    file: str
+    line: Optional[int] = None
+    description: str
+
+
+class AIAnalysis(BaseModel):
+    """AI analysis results"""
+    aiGeneratedPercentage: float
+    aiVerdict: Optional[str] = None
+    strengths: List[str] = []
+    improvements: List[str] = []
+    deletions: int = 0
+
+
 class ScoreBreakdown(BaseModel):
     """Score breakdown"""
     total_score: Optional[float] = None
@@ -112,7 +130,8 @@ class ScoreBreakdown(BaseModel):
     engineering_score: Optional[float] = None
     organization_score: Optional[float] = None
     documentation_score: Optional[float] = None
-    architecture_score: Optional[float] = None  # Alias for engineering
+    architecture_score: Optional[float] = None
+    llm_score: Optional[float] = None  # Maps to originality
 
 
 class TechStackItem(BaseModel):
@@ -209,6 +228,85 @@ class LeaderboardResponse(BaseModel):
     total: int
     page: int
     page_size: int
+
+
+class ProjectDetailResponse(BaseModel):
+    """Enhanced project detail response matching frontend"""
+    # Identity
+    id: UUID
+    teamName: Optional[str] = None
+    repoUrl: str
+    submittedAt: datetime
+    status: str
+    
+    # Tech Stack
+    techStack: List[str] = []  # Technology names as strings
+    languages: List[LanguageBreakdown] = []
+    architecturePattern: str = "Monolithic"
+    frameworks: List[str] = []
+    
+    # Flat Scores (not nested)
+    totalScore: float = 0
+    qualityScore: float = 0
+    securityScore: float = 0
+    originalityScore: float = 0
+    architectureScore: float = 0
+    documentationScore: float = 0
+    
+    # Commit Forensics
+    totalCommits: int = 0
+    contributors: List[ContributorDetail] = []
+    commitPatterns: List[CommitPattern] = []
+    burstCommitWarning: bool = False
+    lastMinuteCommits: int = 0
+    
+    # Security
+    securityIssues: List[SecurityIssue] = []
+    secretsDetected: int = 0
+    
+    # AI Analysis
+    aiGeneratedPercentage: float = 0
+    aiVerdict: Optional[str] = None
+    strengths: List[str] = []
+    improvements: List[str] = []
+    
+    # Project Stats
+    totalFiles: int = 0
+    totalLinesOfCode: int = 0
+    testCoverage: float = 0
+
+
+class ProjectListItemResponse(BaseModel):
+    """Project list item response matching frontend"""
+    id: UUID
+    teamName: Optional[str] = None
+    repoUrl: str
+    status: str
+    totalScore: float = 0
+    qualityScore: float = 0
+    securityScore: float = 0
+    originalityScore: float = 0
+    architectureScore: float = 0
+    documentationScore: float = 0
+    techStack: List[str] = []  # Top technologies as strings
+    securityIssues: int = 0  # Count
+    submittedAt: datetime
+
+
+class StatsResponse(BaseModel):
+    """Dashboard statistics response"""
+    totalProjects: int
+    completedProjects: int
+    pendingProjects: int
+    averageScore: float  # Note: 'average' not 'avg'
+    totalSecurityIssues: int
+
+
+class BatchUploadItemRequest(BaseModel):
+    """Single item in batch upload CSV"""
+    teamName: str
+    repoUrl: str
+    description: Optional[str] = None
 
 
 class ErrorResponse(BaseModel):

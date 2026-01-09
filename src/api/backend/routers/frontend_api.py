@@ -324,7 +324,8 @@ async def batch_upload(
         
         # Read CSV content
         content = await file.read()
-        csv_text = content.decode('utf-8')
+        # Handle BOM (Byte Order Mark) from Excel/Windows
+        csv_text = content.decode('utf-8-sig')  # utf-8-sig handles BOM automatically
         csv_reader = csv.DictReader(io.StringIO(csv_text))
         
         # Validate headers

@@ -11,6 +11,7 @@ import io
 from src.api.backend.crud import ProjectCRUD, TechStackCRUD, IssueCRUD, TeamMemberCRUD, AnalysisJobCRUD
 from src.api.backend.services.frontend_adapter import FrontendAdapter
 from src.api.backend.background import run_analysis_job
+from src.api.backend.utils.cache import cache, RedisCache
 
 router = APIRouter(prefix="/api", tags=["frontend"])
 
@@ -19,6 +20,12 @@ router = APIRouter(prefix="/api", tags=["frontend"])
 async def get_project_detail(project_id: str):
     """Get detailed project evaluation (matches frontend ProjectEvaluation)"""
     try:
+        # Check cache first
+        cache_key = f"hackeval:project:{project_id}"
+        cached_result = cache.get(cache_key)
+        if cached_result:
+            return cached_result
+        
         # Get project
         project = ProjectCRUD.get_project(project_id)
         if not project:
@@ -37,6 +44,10 @@ async def get_project_detail(project_id: str):
             project, tech_stack, issues, team_members, report_json
         )
         
+        # Cache for 5 minutes (completed projects change rarely)
+        if project.get("status") == "completed":
+            cache.set(cache_key, result, RedisCache.TTL_MEDIUM)
+        
         return result
         
     except HTTPException:
@@ -54,6 +65,13 @@ async def list_projects(
 ):
     """List all projects with filters (matches frontend ProjectListItem[])""" 
     try:
+        # Check cache (only for unfiltered queries)
+        cache_key = f"hackeval:projects:{status}:{tech}:{sort}:{search}"
+        if not search:  # Don't cache search queries
+            cached_result = cache.get(cache_key)
+            if cached_result:
+                return cached_result
+        
         projects, _ = ProjectCRUD.list_projects()
         
         # Apply filters
@@ -90,6 +108,10 @@ async def list_projects(
             item = FrontendAdapter.transform_project_list_item(project, tech_stack, security_count)
             results.append(item)
         
+        # Cache for 30 seconds
+        if not search:
+            cache.set(cache_key, results, RedisCache.TTL_SHORT)
+        
         return results
         
     except Exception as e:
@@ -104,6 +126,13 @@ async def get_leaderboard(
 ):
     """Get leaderboard with filters (matches frontend LeaderboardEntry[])""" 
     try:
+        # Check cache (only for unfiltered queries)
+        cache_key = f"hackeval:leaderboard:{tech}:{sort}:{search}"
+        if not search:
+            cached_result = cache.get(cache_key)
+            if cached_result:
+                return cached_result
+        
         projects, _ = ProjectCRUD.list_projects()
         
         # Filter only completed
@@ -133,6 +162,10 @@ async def get_leaderboard(
             item = FrontendAdapter.transform_leaderboard_item(project, tech_stack)
             results.append(item)
         
+        # Cache for 30 seconds
+        if not search:
+            cache.set(cache_key, results, RedisCache.TTL_SHORT)
+        
         return results
         
     except Exception as e:
@@ -143,6 +176,12 @@ async def get_leaderboard(
 async def get_leaderboard_chart():
     """Get leaderboard data for chart visualization"""
     try:
+        # Check cache
+        cache_key = "hackeval:leaderboard:chart"
+        cached_result = cache.get(cache_key)
+        if cached_result:
+            return cached_result
+        
         projects, _ = ProjectCRUD.list_projects()
         completed = [p for p in projects if p.get("status") == "completed"]
         
@@ -161,6 +200,9 @@ async def get_leaderboard_chart():
                 "documentationScore": project.get("documentation_score") or 0
             })
         
+        # Cache for 1 minute
+        cache.set(cache_key, chart_data, 60)
+        
         return chart_data
         
     except Exception as e:
@@ -171,6 +213,12 @@ async def get_leaderboard_chart():
 async def get_dashboard_stats():
     """Get aggregate statistics for dashboard"""
     try:
+        # Check cache
+        cache_key = "hackeval:stats"
+        cached_result = cache.get(cache_key)
+        if cached_result:
+            return cached_result
+        
         projects, total_projects = ProjectCRUD.list_projects()
         
         completed = [p for p in projects if p.get("status") == "completed"]
@@ -196,13 +244,18 @@ async def get_dashboard_stats():
             issues = IssueCRUD.get_issues(project["id"])
             total_issues += len([i for i in issues if i.get("type") == "security"])
         
-        return {
+        result = {
             "totalProjects": len(projects),
             "completedProjects": len(completed),
             "pendingProjects": len(in_progress),  # Changed from inProgressProjects
             "averageScore": avg_score,  # Changed from avgScore
             "totalSecurityIssues": total_issues
         }
+        
+        # Cache for 30 seconds
+        cache.set(cache_key, result, RedisCache.TTL_SHORT)
+        
+        return result
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

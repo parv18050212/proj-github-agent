@@ -35,4 +35,4 @@ pytest-cov
 pytest-mock
 httpx
 faker
-python-multipart
+python-multipartredis

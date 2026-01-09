@@ -6,6 +6,7 @@ from typing import Dict, Any, List
 from uuid import UUID
 from datetime import datetime
 from src.api.backend.crud import ProjectCRUD, TechStackCRUD, IssueCRUD, TeamMemberCRUD
+from src.api.backend.utils.cache import cache
 
 
 class DataMapper:
@@ -174,39 +175,39 @@ class DataMapper:
     @staticmethod
     def save_analysis_results(project_id: UUID, report: Dict[str, Any]) -> bool:
         """Save complete analysis results to database"""
+        import traceback
+        
         try:
             # 1. Update project with scores
             scores = DataMapper.map_scores(report)
             
-            judge = report.get("judge", {})
+            judge = report.get("judge", {}) or {}
             verdict = judge.get("verdict", "Unknown")
             ai_pros = judge.get("positive_feedback", "")
             ai_cons = judge.get("constructive_feedback", "")
             
             # Map to actual database column names (user's schema)
-            # Note: report_json is stored separately to avoid issues with JSONB size/format
             project_data = {
                 **scores,
                 "total_commits": report.get("total_commits", 0),
-                "verdict": str(verdict)[:255] if verdict else None,  # Truncate to avoid constraint issues
-                "ai_pros": str(ai_pros)[:5000] if ai_pros else None,  # Truncate long text
+                "verdict": str(verdict)[:255] if verdict else None,
+                "ai_pros": str(ai_pros)[:5000] if ai_pros else None,
                 "ai_cons": str(ai_cons)[:5000] if ai_cons else None,
                 "status": "completed",
                 "analyzed_at": datetime.now().isoformat()
             }
             
-            # Try to save report_json separately to isolate errors
+            # Try to add report_json (may fail if too large or invalid)
             try:
                 report_json = {
                     "scores": report.get("scores", {}),
                     "stack": report.get("stack", []),
-                    "files": report.get("files", [])[:50],  # Limit files to avoid size issues
-                    "judge": report.get("judge", {}),
+                    "files": report.get("files", [])[:30],  # Limit to avoid size issues
+                    "judge": judge,
                     "team": report.get("team", {}),
                     "security": report.get("security", {}),
                     "maturity": report.get("maturity", {}),
                     "structure": report.get("structure", {}),
-                    "commit_details": report.get("commit_details", {}),
                     "forensics": {
                         "author_stats": report.get("team", {}),
                         "total_commits": report.get("total_commits", 0)
@@ -214,35 +215,59 @@ class DataMapper:
                 }
                 project_data["report_json"] = report_json
             except Exception as json_err:
-                print(f"      ⚠️ Warning: Could not build report_json: {json_err}")
-                # Continue without report_json
+                print(f"      ⚠️ Could not build report_json: {json_err}")
             
+            # Try saving with report_json first
             print(f"      📝 Saving project data for {project_id}...")
-            ProjectCRUD.update_project(project_id, project_data)
-            print(f"      ✅ Project data saved successfully")
+            try:
+                ProjectCRUD.update_project(project_id, project_data)
+                print(f"      ✅ Project data saved successfully")
+            except Exception as save_err:
+                print(f"      ⚠️ Save with report_json failed: {save_err}")
+                # Retry without report_json
+                if "report_json" in project_data:
+                    del project_data["report_json"]
+                print(f"      🔄 Retrying without report_json...")
+                ProjectCRUD.update_project(project_id, project_data)
+                print(f"      ✅ Project data saved (without report_json)")
             
             # 2. Save tech stack
-            tech_stack = DataMapper.map_tech_stack(report)
-            if tech_stack:
-                print(f"      📝 Saving {len(tech_stack)} tech stack items...")
-                TechStackCRUD.add_technologies(project_id, tech_stack)
+            try:
+                tech_stack = DataMapper.map_tech_stack(report)
+                if tech_stack:
+                    print(f"      📝 Saving {len(tech_stack)} tech stack items...")
+                    TechStackCRUD.add_technologies(project_id, tech_stack)
+            except Exception as e:
+                print(f"      ⚠️ Failed to save tech stack: {e}")
             
-            # 3. Save issues
-            issues = DataMapper.map_issues(report, project_id)
-            if issues:
-                print(f"      📝 Saving {len(issues)} issues...")
-                IssueCRUD.add_issues(project_id, issues)
+            # 3. Save issues  
+            try:
+                issues = DataMapper.map_issues(report, project_id)
+                if issues:
+                    print(f"      📝 Saving {len(issues)} issues...")
+                    IssueCRUD.add_issues(project_id, issues)
+            except Exception as e:
+                print(f"      ⚠️ Failed to save issues: {e}")
             
             # 4. Save team members
-            team_members = DataMapper.map_team_members(report)
-            if team_members:
-                print(f"      📝 Saving {len(team_members)} team members...")
-                TeamMemberCRUD.add_members(project_id, team_members)
+            try:
+                team_members = DataMapper.map_team_members(report)
+                if team_members:
+                    print(f"      📝 Saving {len(team_members)} team members...")
+                    TeamMemberCRUD.add_members(project_id, team_members)
+            except Exception as e:
+                print(f"      ⚠️ Failed to save team members: {e}")
+            
+            # 5. Invalidate cache for this project
+            try:
+                cache.invalidate_project(str(project_id))
+                print(f"      🗑️ Cache invalidated for project {project_id}")
+            except Exception as e:
+                print(f"      ⚠️ Failed to invalidate cache: {e}")
             
             return True
             
         except Exception as e:
-            import traceback
             print(f"      ❌ Error saving results: {e}")
             print(f"      ❌ Traceback: {traceback.format_exc()}")
             return False

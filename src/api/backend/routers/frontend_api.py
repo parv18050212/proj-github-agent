@@ -328,15 +328,15 @@ async def batch_upload(
         csv_text = content.decode('utf-8-sig')  # utf-8-sig handles BOM automatically
         csv_reader = csv.DictReader(io.StringIO(csv_text))
         
-        # Validate headers
-        required_headers = {'teamName', 'repoUrl'}
+        # Validate headers - support both camelCase and snake_case
         headers = set(csv_reader.fieldnames or [])
+        has_camel = {'teamName', 'repoUrl'}.issubset(headers)
+        has_snake = {'team_name', 'repo_url'}.issubset(headers)
         
-        if not required_headers.issubset(headers):
-            missing = required_headers - headers
+        if not has_camel and not has_snake:
             raise HTTPException(
                 status_code=400, 
-                detail=f"CSV missing required columns: {', '.join(missing)}"
+                detail="CSV missing required columns: teamName/team_name, repoUrl/repo_url"
             )
         
         # Process each row
@@ -344,8 +344,9 @@ async def batch_upload(
         failed_rows = []
         
         for row_num, row in enumerate(csv_reader, start=2):  # Start at 2 (header is row 1)
-            team_name = row.get('teamName', '').strip()
-            repo_url = row.get('repoUrl', '').strip()
+            # Support both camelCase and snake_case column names
+            team_name = (row.get('teamName') or row.get('team_name') or '').strip()
+            repo_url = (row.get('repoUrl') or row.get('repo_url') or '').strip()
             
             if not team_name or not repo_url:
                 failed_rows.append({

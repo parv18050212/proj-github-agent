@@ -56,7 +56,11 @@ jobs:
     needs: [test]
     if: |
       (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/production') &&
-      (needs.test.result == 'success' || needs.test.result == 'skipped')
+      (
+      needs.test.result == 'success' ||
+      needs.test.result == 'skipped' ||
+      contains(github.event.head_commit.message, '[skip-tests]')
+      )
 
     steps:
       - name: Deploy to EC2

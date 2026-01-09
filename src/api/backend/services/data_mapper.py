@@ -184,19 +184,23 @@ class DataMapper:
             ai_cons = judge.get("constructive_feedback", "")
             
             # Map to actual database column names (user's schema)
+            # Note: report_json is stored separately to avoid issues with JSONB size/format
             project_data = {
                 **scores,
                 "total_commits": report.get("total_commits", 0),
-                "verdict": verdict,
-                "ai_pros": ai_pros,
-                "ai_cons": ai_cons,
+                "verdict": str(verdict)[:255] if verdict else None,  # Truncate to avoid constraint issues
+                "ai_pros": str(ai_pros)[:5000] if ai_pros else None,  # Truncate long text
+                "ai_cons": str(ai_cons)[:5000] if ai_cons else None,
                 "status": "completed",
-                "analyzed_at": datetime.now().isoformat(),
-                # Store full report JSON for frontend adapter to use
-                "report_json": {
+                "analyzed_at": datetime.now().isoformat()
+            }
+            
+            # Try to save report_json separately to isolate errors
+            try:
+                report_json = {
                     "scores": report.get("scores", {}),
                     "stack": report.get("stack", []),
-                    "files": report.get("files", []),
+                    "files": report.get("files", [])[:50],  # Limit files to avoid size issues
                     "judge": report.get("judge", {}),
                     "team": report.get("team", {}),
                     "security": report.get("security", {}),
@@ -205,32 +209,40 @@ class DataMapper:
                     "commit_details": report.get("commit_details", {}),
                     "forensics": {
                         "author_stats": report.get("team", {}),
-                        "total_commits": report.get("total_commits", 0),
-                        "daily_activity": report.get("commit_details", {}).get("daily_activity", {})
-                    },
-                    "repo_tree": report.get("repo_tree", "")
+                        "total_commits": report.get("total_commits", 0)
+                    }
                 }
-            }
+                project_data["report_json"] = report_json
+            except Exception as json_err:
+                print(f"      ⚠️ Warning: Could not build report_json: {json_err}")
+                # Continue without report_json
             
+            print(f"      📝 Saving project data for {project_id}...")
             ProjectCRUD.update_project(project_id, project_data)
+            print(f"      ✅ Project data saved successfully")
             
             # 2. Save tech stack
             tech_stack = DataMapper.map_tech_stack(report)
             if tech_stack:
+                print(f"      📝 Saving {len(tech_stack)} tech stack items...")
                 TechStackCRUD.add_technologies(project_id, tech_stack)
             
             # 3. Save issues
             issues = DataMapper.map_issues(report, project_id)
             if issues:
+                print(f"      📝 Saving {len(issues)} issues...")
                 IssueCRUD.add_issues(project_id, issues)
             
             # 4. Save team members
             team_members = DataMapper.map_team_members(report)
             if team_members:
+                print(f"      📝 Saving {len(team_members)} team members...")
                 TeamMemberCRUD.add_members(project_id, team_members)
             
             return True
             
         except Exception as e:
+            import traceback
             print(f"      ❌ Error saving results: {e}")
+            print(f"      ❌ Traceback: {traceback.format_exc()}")
             return False

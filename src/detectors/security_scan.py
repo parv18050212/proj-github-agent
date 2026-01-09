@@ -13,14 +13,27 @@ PATTERNS = {
     "DB Connection String": r"mysql://|postgresql://|mongodb://"
 }
 
+# Files to skip (example configs, docs, tests often have placeholder keys)
+SKIP_FILES = (
+    ".env.example", ".env.sample", "example.env", "config.example",
+    ".png", ".jpg", ".lock", ".pyc", ".md", ".txt", ".rst"
+)
+
+SKIP_FOLDERS = ("test", "tests", "__tests__", "docs", "documentation", "examples", "node_modules", ".git")
+
 def scan_for_secrets(repo_path: str) -> Dict[str, Any]:
     leaks = []
     
     # Walk through files
     for root, _, files in os.walk(repo_path):
+        # Skip test/docs/example folders
+        if any(skip_folder in root.lower() for skip_folder in SKIP_FOLDERS):
+            continue
+            
         for f in files:
-            # Skip hidden files, images, and lock files
-            if f.startswith(".") or f.endswith((".png", ".jpg", ".lock", ".pyc")):
+            f_lower = f.lower()
+            # Skip hidden files, images, docs, and example config files
+            if f.startswith(".") or f_lower.endswith(SKIP_FILES):
                 continue
             
             path = os.path.join(root, f)
@@ -29,6 +42,11 @@ def scan_for_secrets(repo_path: str) -> Dict[str, Any]:
                     lines = file_in.readlines()
                     
                 for i, line in enumerate(lines):
+                    # Skip commented lines
+                    stripped = line.strip()
+                    if stripped.startswith(("#", "//", "/*", "*", "'", '"')):
+                        continue
+                        
                     for name, pattern in PATTERNS.items():
                         if re.search(pattern, line):
                             # Record minute detail: File, Line #, Type
@@ -42,11 +60,12 @@ def scan_for_secrets(repo_path: str) -> Dict[str, Any]:
             except Exception:
                 continue
                 
-    # Calculate Score (100 = Safe, -20 per leak)
-    security_penalty = min(100, len(leaks) * 20)
+    # Calculate Score (100 = Safe, -10 per leak, max penalty 80)
+    # Projects with some leaks shouldn't instantly get 0
+    security_penalty = min(80, len(leaks) * 10)
     
     return {
-        "score": 100 - security_penalty,
+        "score": max(20, 100 - security_penalty),  # Minimum score of 20
         "leak_count": len(leaks),
         "details": leaks
     }

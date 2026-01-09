@@ -62,9 +62,13 @@ def evaluate_product_logic(repo_path: str, api_key: str = None) -> dict:
 
     except Exception as e:
         print(f"      ❌ Gemini Error: {e}")
+        # Return reasonable defaults instead of 0 to avoid penalizing projects unfairly
         return {
-            "project_name": "Error",
+            "project_name": "Analysis Error",
             "description": f"AI Analysis Failed: {str(e)}",
             "features": [],
-            "score": 0
+            "implementation_score": 50,  # Neutral default score
+            "positive_feedback": "Unable to analyze - using default score",
+            "constructive_feedback": "Manual review recommended",
+            "verdict": "Needs Review"
         }

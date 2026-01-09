@@ -76,6 +76,22 @@ class AnalysisStatusResponse(BaseModel):
     error_message: Optional[str] = None
     started_at: datetime
     completed_at: Optional[datetime] = None
+    
+    class Config:
+        # Allow response to use camelCase for frontend
+        populate_by_name = True
+        json_schema_extra = {
+            "example": {
+                "job_id": "123e4567-e89b-12d3-a456-426614174000",
+                "project_id": "987fcdeb-51a2-43f1-b9e5-ac4c5d6e7890",
+                "status": "running",
+                "progress": 45,
+                "current_stage": "security_scan",
+                "error_message": None,
+                "started_at": "2024-01-09T10:30:00",
+                "completed_at": None
+            }
+        }
 
 
 class LanguageBreakdown(BaseModel):

@@ -55,8 +55,10 @@ def analyze_quality(repo_path: str) -> Dict[str, Any]:
         avg_cc = total_complexity / py_files_count
         avg_mi = total_maintainability / py_files_count
     else:
-        avg_cc = 0
-        avg_mi = 0 # Neutral score
+        # No Python files found - use neutral scores (not 0)
+        # This prevents penalizing JS/TS/Go projects
+        avg_cc = 5  # Average complexity
+        avg_mi = 60  # Neutral maintainability
 
     # Documentation Score calculation (Comment to Code ratio)
     # Ideal ratio is roughly 1:5 or 20%
@@ -65,7 +67,7 @@ def analyze_quality(repo_path: str) -> Dict[str, Any]:
         # Normalize: if > 15%, give 100 points, else scale it
         doc_score = min(1.0, doc_ratio / 0.15) * 100
     else:
-        doc_score = 0
+        doc_score = 40  # Neutral score for non-Python projects
 
     return {
         "avg_complexity": round(avg_cc, 2),         # Lower is better (ideally < 10)

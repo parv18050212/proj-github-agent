@@ -203,17 +203,18 @@ def node_aggregator(ctx):
     top_ai = max([f['ai_pct'] for f in detailed_files]) if detailed_files else 0.0
     
     # --- Scores ---
-    impl_score = judge.get("implementation_score", 0)
+    # Use reasonable defaults (50 = neutral) instead of 0 when data is missing
+    impl_score = judge.get("implementation_score", 50)  # 50 is neutral if AI fails
     
     scores = {
         "originality": max(0, 100 - top_ai),
-        "quality": qual.get("maintainability_index", 0),
-        "security": sec.get("score", 100),
-        "effort": min(100, comm.get("total_commits", 0)),
+        "quality": qual.get("maintainability_index", 50),  # 50 if no Python files
+        "security": sec.get("score", 100),  # 100 if no scan done (assume safe)
+        "effort": min(100, comm.get("total_commits", 0) * 5),  # Scale commits (20 commits = 100)
         "implementation": impl_score,
-        "engineering": mat.get("score", 0),
-        "organization": struct.get("organization_score", 0),
-        "documentation": qual.get("documentation_score", 0)
+        "engineering": mat.get("score", 20),  # 20 base even without devops
+        "organization": struct.get("organization_score", 50),  # 50 if not analyzed
+        "documentation": qual.get("documentation_score", 30)  # 30 base score
     }
     
     # --- Viz ---
